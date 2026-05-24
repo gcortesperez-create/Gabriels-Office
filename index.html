@@ -1,0 +1,1217 @@
+<!DOCTYPE html>
+<script type="application/json" id="cowork-artifact-meta">
+{
+  "name": "Estados Financieros",
+  "schemaVersion": 1,
+  "description": "Estados financieros mensuales con Estado de Resultados (P&L) y Balance General. Entrada manual por cuenta/rubro, cálculo automático de totales, indicadores financieros, verificación de ecuación contable, navegación mes a mes y sistema de snapshots para documentación histórica.",
+  "mcpTools": [],
+  "mcpServerNames": []
+}
+</script>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Estados Financieros</title>
+<style>
+:root { color-scheme: light; }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #f0f2f7;
+  color: #1a1a2e;
+  min-height: 100vh;
+  font-size: 14px;
+}
+
+/* ── HEADER ── */
+.hdr {
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  color: #fff;
+  padding: 14px 24px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.hdr h1 { font-size: 17px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+.hdr-right { font-size: 11px; opacity: .55; }
+
+/* ── MONTH NAV ── */
+.month-nav {
+  background: #fff;
+  border-bottom: 1px solid #e2e6f0;
+  display: flex; align-items: center; justify-content: center; gap: 20px;
+  padding: 12px 24px;
+}
+.mnav-btn {
+  width: 32px; height: 32px;
+  border: 1px solid #d1d5db; border-radius: 8px;
+  background: #fff; color: #374151; font-size: 18px; line-height: 1;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: background .12s;
+}
+.mnav-btn:hover { background: #f3f4f6; }
+.month-title { font-size: 17px; font-weight: 700; color: #1a1a2e; min-width: 200px; text-align: center; }
+
+/* ── TABS ── */
+.tabs {
+  background: #fff;
+  border-bottom: 2px solid #e2e6f0;
+  display: flex;
+  padding: 0 24px;
+}
+.tab {
+  padding: 11px 18px;
+  border: none; background: none;
+  font-size: 13px; font-weight: 600;
+  color: #6b7280; cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  transition: all .14s;
+}
+.tab.active { color: #2563eb; border-bottom-color: #2563eb; }
+.tab:hover:not(.active) { color: #374151; }
+
+/* ── TAB PANES ── */
+.tab-pane { display: none; }
+.tab-pane.active { display: block; }
+
+/* ── LAYOUT: two-column for statement + summary ── */
+.stmt-layout {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 16px;
+  padding: 20px 24px;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .stmt-layout { grid-template-columns: 1fr; }
+}
+
+/* ── SECTIONS ── */
+.section {
+  background: #fff;
+  border-radius: 12px;
+  border: 1px solid #e2e6f0;
+  margin-bottom: 14px;
+  overflow: hidden;
+}
+.section-title {
+  display: flex; align-items: center; gap: 8px;
+  padding: 12px 16px;
+  font-size: 13px; font-weight: 700;
+  background: #f8faff;
+  border-bottom: 1px solid #e2e6f0;
+  color: #1e3a5f;
+}
+.section-title .icon { font-size: 15px; }
+
+/* ── LINE ITEMS ── */
+.line-item {
+  display: flex; align-items: center;
+  padding: 9px 16px;
+  border-bottom: 1px solid #f3f4f6;
+  gap: 10px;
+}
+.line-item:last-child { border-bottom: none; }
+.line-label {
+  flex: 1;
+  font-size: 13px;
+  color: #374151;
+}
+.line-label.indent { padding-left: 14px; color: #6b7280; font-size: 12.5px; }
+.line-input {
+  width: 130px;
+  padding: 5px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 7px;
+  font-size: 13px;
+  text-align: right;
+  color: #1a1a2e;
+  background: #fff;
+  outline: none;
+  font-variant-numeric: tabular-nums;
+  transition: border-color .14s;
+}
+.line-input:focus { border-color: #2563eb; background: #f0f5ff; }
+.line-input:disabled {
+  background: transparent;
+  border-color: transparent;
+  color: #374151;
+  font-weight: 700;
+  cursor: default;
+  text-align: right;
+}
+
+/* ── SUBTOTAL / TOTAL ROWS ── */
+.row-subtotal {
+  display: flex; align-items: center;
+  padding: 8px 16px;
+  border-bottom: 1px solid #e2e6f0;
+  background: #f8faff;
+}
+.row-subtotal .lbl { flex: 1; font-size: 12px; font-weight: 700; color: #1e3a5f; text-transform: uppercase; letter-spacing: .4px; }
+.row-subtotal .val { font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; min-width: 130px; text-align: right; }
+.row-total {
+  display: flex; align-items: center;
+  padding: 12px 16px;
+  background: #1a1a2e;
+  color: #fff;
+}
+.row-total .lbl { flex: 1; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; }
+.row-total .val { font-size: 16px; font-weight: 800; font-variant-numeric: tabular-nums; min-width: 130px; text-align: right; }
+
+/* Colors */
+.green { color: #059669 !important; }
+.red   { color: #dc2626 !important; }
+.blue  { color: #2563eb !important; }
+.purple{ color: #7c3aed !important; }
+
+/* ── KPI SUMMARY CARD ── */
+.kpi-card {
+  background: #fff;
+  border-radius: 12px;
+  border: 1px solid #e2e6f0;
+  overflow: hidden;
+  position: sticky;
+  top: 12px;
+}
+.kpi-title {
+  padding: 12px 16px;
+  font-size: 13px; font-weight: 700; color: #1e3a5f;
+  background: #f8faff; border-bottom: 1px solid #e2e6f0;
+  display: flex; align-items: center; gap: 6px;
+}
+.kpi-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 16px;
+  border-bottom: 1px solid #f3f4f6;
+}
+.kpi-row:last-child { border-bottom: none; }
+.kpi-lbl { font-size: 12px; color: #6b7280; }
+.kpi-val { font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+.divider-row {
+  height: 1px; background: #e2e6f0;
+  margin: 4px 0;
+}
+
+/* ── ALERT BALANCE ── */
+.balance-alert {
+  margin: 0 16px 12px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  display: flex; align-items: center; gap: 8px;
+}
+.balance-alert.ok { background: #d1fae5; color: #065f46; }
+.balance-alert.warn { background: #fef3c7; color: #92400e; }
+.balance-alert.err { background: #fee2e2; color: #991b1b; }
+
+/* ── SNAPSHOT BAR ── */
+.snap-bar {
+  display: flex; align-items: center; justify-content: flex-end; gap: 10px;
+  padding: 14px 24px;
+  background: #fff;
+  border-top: 1px solid #e2e6f0;
+}
+.snap-hint { font-size: 12px; color: #9ca3af; }
+.btn-snap {
+  padding: 9px 20px;
+  background: #7c3aed; color: #fff;
+  border: none; border-radius: 8px;
+  font-size: 13px; font-weight: 700;
+  cursor: pointer; display: flex; align-items: center; gap: 6px;
+  transition: background .13s;
+}
+.btn-snap:hover { background: #6d28d9; }
+.btn-save {
+  padding: 7px 14px;
+  background: #2563eb; color: #fff;
+  border: none; border-radius: 7px;
+  font-size: 12px; font-weight: 600;
+  cursor: pointer; margin-left: auto;
+  transition: background .13s;
+}
+.btn-save:hover { background: #1d4ed8; }
+
+/* ── HISTORY ── */
+.history-wrap { padding: 20px 24px; }
+.history-empty { text-align: center; color: #9ca3af; padding: 60px; font-size: 14px; }
+
+.hcard {
+  background: #fff;
+  border: 1px solid #e2e6f0;
+  border-radius: 12px;
+  margin-bottom: 14px;
+  overflow: hidden;
+}
+.hcard-hdr {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 18px;
+  background: #f8faff;
+  border-bottom: 1px solid #e2e6f0;
+  cursor: pointer;
+}
+.hcard-month { font-size: 15px; font-weight: 700; }
+.hcard-meta { font-size: 11px; color: #9ca3af; margin-top: 2px; }
+.hcard-actions { display: flex; gap: 8px; }
+.btn-sm {
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 12px; font-weight: 600;
+  cursor: pointer;
+  border: 1px solid;
+}
+.btn-sm.grey { border-color: #d1d5db; background: #fff; color: #374151; }
+.btn-sm.grey:hover { background: #f3f4f6; }
+.btn-sm.danger { border-color: #fecaca; background: #fff; color: #dc2626; }
+.btn-sm.danger:hover { background: #fee2e2; }
+
+.hcard-kpis {
+  display: flex; gap: 0;
+  border-bottom: 1px solid #f3f4f6;
+}
+.hcard-kpi {
+  flex: 1;
+  padding: 10px 14px;
+  text-align: center;
+  border-right: 1px solid #f3f4f6;
+}
+.hcard-kpi:last-child { border-right: none; }
+.hcard-kpi .kl { font-size: 10px; color: #9ca3af; font-weight: 600; text-transform: uppercase; }
+.hcard-kpi .kv { font-size: 14px; font-weight: 700; margin-top: 2px; }
+
+.hcard-body { display: none; }
+.hcard-body.open { display: block; }
+
+.hcard-tabs { display: flex; border-bottom: 1px solid #e2e6f0; }
+.hcard-tab {
+  padding: 9px 16px;
+  border: none; background: none;
+  font-size: 12px; font-weight: 600; color: #6b7280; cursor: pointer;
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.hcard-tab.active { color: #2563eb; border-bottom-color: #2563eb; }
+
+.snap-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.snap-table td { padding: 7px 14px; border-bottom: 1px solid #f3f4f6; }
+.snap-table td:last-child { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+.snap-table tr.subtotal td { background: #f8faff; font-weight: 700; font-size: 11px; text-transform: uppercase; color: #1e3a5f; }
+.snap-table tr.total-row td { background: #1a1a2e; color: #fff; font-weight: 800; }
+.snap-table tr.indent td:first-child { padding-left: 26px; color: #6b7280; }
+
+/* ── MODAL ── */
+.overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,.4); z-index: 1000;
+  align-items: center; justify-content: center;
+}
+.overlay.show { display: flex; }
+.modal {
+  background: #fff; border-radius: 14px;
+  padding: 26px; max-width: 400px; width: 90%;
+  box-shadow: 0 20px 60px rgba(0,0,0,.22);
+}
+.modal h3 { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+.modal p { font-size: 13px; color: #6b7280; margin-bottom: 20px; line-height: 1.5; }
+.modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+.btn-cancel { padding: 8px 16px; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; font-size: 13px; font-weight: 600; cursor: pointer; color: #374151; }
+.btn-confirm { padding: 8px 16px; border: none; border-radius: 8px; background: #7c3aed; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; }
+
+/* ── TOAST ── */
+#toast {
+  position: fixed; bottom: 20px; right: 20px;
+  background: #1a1a2e; color: #fff;
+  padding: 10px 18px; border-radius: 10px;
+  font-size: 13px; font-weight: 600;
+  opacity: 0; transform: translateY(8px);
+  transition: all .25s; z-index: 9999; pointer-events: none;
+}
+#toast.show { opacity: 1; transform: translateY(0); }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="hdr">
+  <h1>📈 Estados Financieros</h1>
+  <div class="hdr-right">USD · Contabilidad mensual</div>
+</div>
+
+<!-- MONTH NAV -->
+<div class="month-nav">
+  <button class="mnav-btn" onclick="changeMonth(-1)">‹</button>
+  <div class="month-title" id="month-title"></div>
+  <button class="mnav-btn" onclick="changeMonth(1)">›</button>
+</div>
+
+<!-- MAIN TABS -->
+<div class="tabs">
+  <button class="tab active" onclick="switchTab('pl')">📊 Estado de Resultados</button>
+  <button class="tab" onclick="switchTab('bs')">⚖️ Balance General</button>
+  <button class="tab" onclick="switchTab('hist')">📁 Historial</button>
+</div>
+
+<!-- ══════════════════════════════════
+     TAB: ESTADO DE RESULTADOS (P&L)
+═══════════════════════════════════ -->
+<div id="tab-pl" class="tab-pane active">
+  <div class="stmt-layout">
+
+    <!-- LEFT: Form -->
+    <div>
+
+      <!-- INGRESOS -->
+      <div class="section">
+        <div class="section-title"><span class="icon">💰</span> Ingresos</div>
+        <div class="line-item">
+          <span class="line-label">Ventas / Ingresos Operativos</span>
+          <input class="line-input" type="number" id="pl-ventas" step="0.01" placeholder="0.00" oninput="calcPL()">
+        </div>
+        <div class="line-item">
+          <span class="line-label">Otros Ingresos</span>
+          <input class="line-input" type="number" id="pl-otros-ing" step="0.01" placeholder="0.00" oninput="calcPL()">
+        </div>
+        <div class="row-subtotal">
+          <span class="lbl">Total Ingresos</span>
+          <span class="val green" id="pl-total-ing">$0.00</span>
+        </div>
+      </div>
+
+      <!-- COSTO DE VENTAS -->
+      <div class="section">
+        <div class="section-title"><span class="icon">🏭</span> Costo de Ventas</div>
+        <div class="line-item">
+          <span class="line-label">Costo de Mercancía / Producción</span>
+          <input class="line-input" type="number" id="pl-cogs" step="0.01" placeholder="0.00" oninput="calcPL()">
+        </div>
+        <div class="row-subtotal">
+          <span class="lbl">Utilidad Bruta</span>
+          <span class="val" id="pl-util-bruta">$0.00</span>
+        </div>
+      </div>
+
+      <!-- GASTOS OPERATIVOS -->
+      <div class="section">
+        <div class="section-title"><span class="icon">📋</span> Gastos Operativos</div>
+        <div class="line-item">
+          <span class="line-label">Sueldos y Salarios</span>
+          <input class="line-input" type="number" id="pl-sueldos" step="0.01" placeholder="0.00" oninput="calcPL()">
+        </div>
+        <div class="line-item">
+          <span class="line-label">Renta / Arrendamiento</span>
+          <input class="line-input" type="number" id="pl-renta" step="0.01" placeholder="0.00" oninput="calcPL()">
+        </div>
+        <div class="line-item">
+          <span class="line-label">Servicios y Suministros</span>
+          <input class="line-input" type="number" id="pl-servicios" step="0.01" placeholder="0.00" oninput="calcPL()">
+        </div>
+        <div class="line-item">
+          <span class="line-label">Marketing y Publicidad</span>
+          <input class="line-input" type="number" id="pl-marketing" step="0.01" placeholder="0.00" oninput="calcPL()">
+        </div>
+        <div class="line-item">
+          <span class="line-label">Depreciación y Amortización</span>
+          <input class="line-input" type="number" id="pl-depreciacion" step="0.01" placeholder="0.00" oninput="calcPL()">
+        </div>
+        <div class="line-item">
+          <span class="line-label">Otros Gastos Operativos</span>
+          <input class="line-input" type="number" id="pl-otros-op" step="0.01" placeholder="0.00" oninput="calcPL()">
+        </div>
+        <div class="row-subtotal">
+          <span class="lbl">Total Gastos Operativos</span>
+          <span class="val red" id="pl-total-op">$0.00</span>
+        </div>
+        <div class="row-subtotal" style="background:#f0f5ff;">
+          <span class="lbl blue">Utilidad Operativa (EBIT)</span>
+          <span class="val blue" id="pl-ebit">$0.00</span>
+        </div>
+      </div>
+
+      <!-- GASTOS FINANCIEROS E IMPUESTOS -->
+      <div class="section">
+        <div class="section-title"><span class="icon">🏦</span> Gastos Financieros e Impuestos</div>
+        <div class="line-item">
+          <span class="line-label">Intereses y Gastos Financieros</span>
+          <input class="line-input" type="number" id="pl-intereses" step="0.01" placeholder="0.00" oninput="calcPL()">
+        </div>
+        <div class="line-item">
+          <span class="line-label">Impuesto Sobre la Renta (ISR)</span>
+          <input class="line-input" type="number" id="pl-isr" step="0.01" placeholder="0.00" oninput="calcPL()">
+        </div>
+      </div>
+
+      <!-- UTILIDAD NETA -->
+      <div class="section">
+        <div class="row-total">
+          <span class="lbl">🏆 Utilidad Neta del Período</span>
+          <span class="val" id="pl-util-neta">$0.00</span>
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;margin-bottom:4px;">
+        <button class="btn-save" onclick="savePL()">💾 Guardar cambios</button>
+      </div>
+
+    </div>
+
+    <!-- RIGHT: KPI Summary -->
+    <div>
+      <div class="kpi-card">
+        <div class="kpi-title">📊 Resumen P&L — <span id="kpi-month"></span></div>
+        <div class="kpi-row">
+          <span class="kpi-lbl">Ingresos Totales</span>
+          <span class="kpi-val green" id="k-ing">$0.00</span>
+        </div>
+        <div class="kpi-row">
+          <span class="kpi-lbl">Costo de Ventas</span>
+          <span class="kpi-val red" id="k-cogs">$0.00</span>
+        </div>
+        <div class="kpi-row" style="background:#f8faff;">
+          <span class="kpi-lbl" style="font-weight:700;">Utilidad Bruta</span>
+          <span class="kpi-val" id="k-bruta">$0.00</span>
+        </div>
+        <div class="kpi-row">
+          <span class="kpi-lbl">Gastos Operativos</span>
+          <span class="kpi-val red" id="k-op">$0.00</span>
+        </div>
+        <div class="kpi-row" style="background:#f0f5ff;">
+          <span class="kpi-lbl" style="font-weight:700;color:#2563eb;">EBIT</span>
+          <span class="kpi-val blue" id="k-ebit">$0.00</span>
+        </div>
+        <div class="kpi-row">
+          <span class="kpi-lbl">Financieros + ISR</span>
+          <span class="kpi-val red" id="k-fin">$0.00</span>
+        </div>
+        <div class="kpi-row" style="background:#1a1a2e;">
+          <span class="kpi-lbl" style="color:#fff;font-weight:700;">Utilidad Neta</span>
+          <span class="kpi-val" style="color:#fff;" id="k-neta">$0.00</span>
+        </div>
+        <div style="padding:12px 16px;">
+          <div style="font-size:11px;color:#9ca3af;margin-bottom:6px;font-weight:600;text-transform:uppercase;">Márgenes</div>
+          <div class="kpi-row" style="padding:6px 0;border:none;">
+            <span class="kpi-lbl">Margen Bruto</span>
+            <span class="kpi-val" id="k-mg-bruto">—</span>
+          </div>
+          <div class="kpi-row" style="padding:6px 0;border:none;">
+            <span class="kpi-lbl">Margen Neto</span>
+            <span class="kpi-val" id="k-mg-neto">—</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /stmt-layout -->
+
+  <!-- SNAPSHOT BAR -->
+  <div class="snap-bar">
+    <span class="snap-hint">Guarda una copia de este período para documentación</span>
+    <button class="btn-snap" onclick="openSnapModal()">📸 Guardar Snapshot</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     TAB: BALANCE GENERAL
+═══════════════════════════════════ -->
+<div id="tab-bs" class="tab-pane">
+  <div class="stmt-layout">
+
+    <!-- LEFT -->
+    <div>
+
+      <!-- ACTIVOS CORRIENTES -->
+      <div class="section">
+        <div class="section-title"><span class="icon">💵</span> Activos Corrientes</div>
+        <div class="line-item">
+          <span class="line-label">Efectivo y Equivalentes</span>
+          <input class="line-input" type="number" id="bs-efectivo" step="0.01" placeholder="0.00" oninput="calcBS()">
+        </div>
+        <div class="line-item">
+          <span class="line-label">Cuentas por Cobrar</span>
+          <input class="line-input" type="number" id="bs-cxc" step="0.01" placeholder="0.00" oninput="calcBS()">
+        </div>
+        <div class="line-item">
+          <span class="line-label">Inventarios</span>
+          <input class="line-input" type="number" id="bs-inventario" step="0.01" placeholder="0.00" oninput="calcBS()">
+        </div>
+        <div class="line-item">
+          <span class="line-label">Otros Activos Corrientes</span>
+          <input class="line-input" type="number" id="bs-otros-ac" step="0.01" placeholder="0.00" oninput="calcBS()">
+        </div>
+        <div class="row-subtotal">
+          <span class="lbl">Total Activos Corrientes</span>
+          <span class="val green" id="bs-total-ac">$0.00</span>
+        </div>
+      </div>
+
+      <!-- ACTIVOS NO CORRIENTES -->
+      <div class="section">
+        <div class="section-title"><span class="icon">🏢</span> Activos No Corrientes</div>
+        <div class="line-item">
+          <span class="line-label">Propiedad, Planta y Equipo (neto)</span>
+          <input class="line-input" type="number" id="bs-ppe" step="0.01" placeholder="0.00" oninput="calcBS()">
+        </div>
+        <div class="line-item">
+          <span class="line-label">Activos Intangibles</span>
+          <input class="line-input" type="number" id="bs-intangibles" step="0.01" placeholder="0.00" oninput="calcBS()">
+        </div>
+        <div class="line-item">
+          <span class="line-label">Otros Activos No Corrientes</span>
+          <input class="line-input" type="number" id="bs-otros-anc" step="0.01" placeholder="0.00" oninput="calcBS()">
+        </div>
+        <div class="row-subtotal">
+          <span class="lbl">Total Activos No Corrientes</span>
+          <span class="val green" id="bs-total-anc">$0.00</span>
+        </div>
+      </div>
+
+      <!-- TOTAL ACTIVOS -->
+      <div class="section">
+        <div class="row-total">
+          <span class="lbl">TOTAL ACTIVOS</span>
+          <span class="val" id="bs-total-activos">$0.00</span>
+        </div>
+      </div>
+
+      <hr style="border:none;border-top:2px dashed #e2e6f0;margin:4px 0 14px;">
+
+      <!-- PASIVOS CORRIENTES -->
+      <div class="section">
+        <div class="section-title"><span class="icon">📤</span> Pasivos Corrientes</div>
+        <div class="line-item">
+          <span class="line-label">Cuentas por Pagar</span>
+          <input class="line-input" type="number" id="bs-cxp" step="0.01" placeholder="0.00" oninput="calcBS()">
+        </div>
+        <div class="line-item">
+          <span class="line-label">Préstamos a Corto Plazo</span>
+          <input class="line-input" type="number" id="bs-prestamo-cp" step="0.01" placeholder="0.00" oninput="calcBS()">
+        </div>
+        <div class="line-item">
+          <span class="line-label">Impuestos por Pagar</span>
+          <input class="line-input" type="number" id="bs-imp-pagar" step="0.01" placeholder="0.00" oninput="calcBS()">
+        </div>
+        <div class="line-item">
+          <span class="line-label">Otros Pasivos Corrientes</span>
+          <input class="line-input" type="number" id="bs-otros-pc" step="0.01" placeholder="0.00" oninput="calcBS()">
+        </div>
+        <div class="row-subtotal">
+          <span class="lbl">Total Pasivos Corrientes</span>
+          <span class="val red" id="bs-total-pc">$0.00</span>
+        </div>
+      </div>
+
+      <!-- PASIVOS NO CORRIENTES -->
+      <div class="section">
+        <div class="section-title"><span class="icon">🏦</span> Pasivos No Corrientes</div>
+        <div class="line-item">
+          <span class="line-label">Préstamos a Largo Plazo</span>
+          <input class="line-input" type="number" id="bs-prestamo-lp" step="0.01" placeholder="0.00" oninput="calcBS()">
+        </div>
+        <div class="line-item">
+          <span class="line-label">Otros Pasivos No Corrientes</span>
+          <input class="line-input" type="number" id="bs-otros-pnc" step="0.01" placeholder="0.00" oninput="calcBS()">
+        </div>
+        <div class="row-subtotal">
+          <span class="lbl">Total Pasivos No Corrientes</span>
+          <span class="val red" id="bs-total-pnc">$0.00</span>
+        </div>
+      </div>
+
+      <!-- TOTAL PASIVOS -->
+      <div class="section">
+        <div class="row-total" style="background:#7c3aed;">
+          <span class="lbl">TOTAL PASIVOS</span>
+          <span class="val" id="bs-total-pasivos">$0.00</span>
+        </div>
+      </div>
+
+      <hr style="border:none;border-top:2px dashed #e2e6f0;margin:4px 0 14px;">
+
+      <!-- CAPITAL CONTABLE -->
+      <div class="section">
+        <div class="section-title"><span class="icon">🏛️</span> Capital Contable (Patrimonio)</div>
+        <div class="line-item">
+          <span class="line-label">Capital Social</span>
+          <input class="line-input" type="number" id="bs-capital" step="0.01" placeholder="0.00" oninput="calcBS()">
+        </div>
+        <div class="line-item">
+          <span class="line-label">Utilidades Retenidas</span>
+          <input class="line-input" type="number" id="bs-retenidas" step="0.01" placeholder="0.00" oninput="calcBS()">
+        </div>
+        <div class="line-item" style="background:#f0f5ff;">
+          <span class="line-label" style="color:#2563eb;font-weight:600;">Utilidad del Período (del P&L)</span>
+          <input class="line-input" type="number" id="bs-util-periodo" step="0.01" placeholder="Auto desde P&L" oninput="calcBS()">
+        </div>
+        <div class="row-subtotal">
+          <span class="lbl">Total Capital Contable</span>
+          <span class="val blue" id="bs-total-capital">$0.00</span>
+        </div>
+      </div>
+
+      <!-- TOTAL PASIVOS + CAPITAL -->
+      <div class="section">
+        <div class="row-total" style="background:#059669;">
+          <span class="lbl">TOTAL PASIVOS + CAPITAL</span>
+          <span class="val" id="bs-total-pyc">$0.00</span>
+        </div>
+      </div>
+
+      <div id="bs-balance-alert"></div>
+
+      <div style="display:flex;justify-content:flex-end;margin-bottom:4px;">
+        <button class="btn-save" onclick="saveBS()">💾 Guardar cambios</button>
+      </div>
+
+    </div>
+
+    <!-- RIGHT: KPI -->
+    <div>
+      <div class="kpi-card">
+        <div class="kpi-title">⚖️ Balance General — <span id="kpi-month-bs"></span></div>
+        <div style="padding:10px 16px;border-bottom:1px solid #f3f4f6;">
+          <div style="font-size:11px;color:#9ca3af;font-weight:600;text-transform:uppercase;margin-bottom:8px;">Activos</div>
+          <div class="kpi-row" style="padding:5px 0;border:none;">
+            <span class="kpi-lbl">Activos Corrientes</span>
+            <span class="kpi-val green" id="kb-ac">$0.00</span>
+          </div>
+          <div class="kpi-row" style="padding:5px 0;border:none;">
+            <span class="kpi-lbl">Activos No Corrientes</span>
+            <span class="kpi-val green" id="kb-anc">$0.00</span>
+          </div>
+          <div class="kpi-row" style="padding:7px 0;border:none;border-top:1px solid #f3f4f6;margin-top:4px;">
+            <span class="kpi-lbl" style="font-weight:700;">Total Activos</span>
+            <span class="kpi-val green" id="kb-ta">$0.00</span>
+          </div>
+        </div>
+        <div style="padding:10px 16px;border-bottom:1px solid #f3f4f6;">
+          <div style="font-size:11px;color:#9ca3af;font-weight:600;text-transform:uppercase;margin-bottom:8px;">Pasivos</div>
+          <div class="kpi-row" style="padding:5px 0;border:none;">
+            <span class="kpi-lbl">Pasivos Corrientes</span>
+            <span class="kpi-val red" id="kb-pc">$0.00</span>
+          </div>
+          <div class="kpi-row" style="padding:5px 0;border:none;">
+            <span class="kpi-lbl">Pasivos No Corrientes</span>
+            <span class="kpi-val red" id="kb-pnc">$0.00</span>
+          </div>
+          <div class="kpi-row" style="padding:7px 0;border:none;border-top:1px solid #f3f4f6;margin-top:4px;">
+            <span class="kpi-lbl" style="font-weight:700;">Total Pasivos</span>
+            <span class="kpi-val red" id="kb-tp">$0.00</span>
+          </div>
+        </div>
+        <div style="padding:10px 16px;border-bottom:1px solid #f3f4f6;">
+          <div class="kpi-row" style="padding:5px 0;border:none;">
+            <span class="kpi-lbl" style="font-weight:700;">Capital Contable</span>
+            <span class="kpi-val blue" id="kb-cap">$0.00</span>
+          </div>
+        </div>
+        <div style="padding:10px 16px;">
+          <div style="font-size:11px;color:#9ca3af;font-weight:600;text-transform:uppercase;margin-bottom:8px;">Indicadores</div>
+          <div class="kpi-row" style="padding:5px 0;border:none;">
+            <span class="kpi-lbl">Razón Corriente</span>
+            <span class="kpi-val" id="kb-rc">—</span>
+          </div>
+          <div class="kpi-row" style="padding:5px 0;border:none;">
+            <span class="kpi-lbl">Apalancamiento</span>
+            <span class="kpi-val" id="kb-apal">—</span>
+          </div>
+        </div>
+        <div style="padding:12px 16px;background:#f8faff;border-top:1px solid #e2e6f0;" id="bs-ecuacion-alert">
+          <div style="font-size:12px;font-weight:700;color:#1a1a2e;">Ecuación Contable</div>
+          <div style="font-size:11px;color:#9ca3af;margin-top:2px;">Activos = Pasivos + Capital</div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /stmt-layout -->
+
+  <div class="snap-bar">
+    <span class="snap-hint">Guarda una copia de este período para documentación</span>
+    <button class="btn-snap" onclick="openSnapModal()">📸 Guardar Snapshot</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     TAB: HISTORIAL
+═══════════════════════════════════ -->
+<div id="tab-hist" class="tab-pane">
+  <div class="history-wrap">
+    <div id="history-content"></div>
+  </div>
+</div>
+
+<!-- MODAL SNAPSHOT -->
+<div class="overlay" id="snap-modal">
+  <div class="modal">
+    <h3>📸 Guardar Snapshot del Período</h3>
+    <p id="snap-modal-txt"></p>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal()">Cancelar</button>
+      <button class="btn-confirm" onclick="confirmSnap()">Guardar en Historial</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ─────────────────────────────────────
+//  STORAGE
+// ─────────────────────────────────────
+const KEY = 'fin_stmts_v3';
+function load() {
+  try { return JSON.parse(localStorage.getItem(KEY)) || { months:{}, history:[] }; }
+  catch { return { months:{}, history:[] }; }
+}
+function save(db) { localStorage.setItem(KEY, JSON.stringify(db)); }
+
+let db = load();
+let curYear, curMonth;
+
+// ─────────────────────────────────────
+//  PL FIELDS
+// ─────────────────────────────────────
+const PL_FIELDS = [
+  'ventas','otros-ing','cogs',
+  'sueldos','renta','servicios','marketing','depreciacion','otros-op',
+  'intereses','isr'
+];
+const BS_FIELDS = [
+  'efectivo','cxc','inventario','otros-ac',
+  'ppe','intangibles','otros-anc',
+  'cxp','prestamo-cp','imp-pagar','otros-pc',
+  'prestamo-lp','otros-pnc',
+  'capital','retenidas','util-periodo'
+];
+
+function mKey(y, m) { return `${y}-${String(m+1).padStart(2,'0')}`; }
+function mLabel(y, m) {
+  return new Date(y, m, 1).toLocaleDateString('es-MX', { month:'long', year:'numeric' })
+    .replace(/^\w/, c => c.toUpperCase());
+}
+function v(id) { return parseFloat(document.getElementById(id).value) || 0; }
+function fmt(n) { return '$' + (n||0).toLocaleString('en-US', { minimumFractionDigits:2, maximumFractionDigits:2 }); }
+function pct(a, b) { return b === 0 ? '—' : (a/b*100).toFixed(1) + '%'; }
+function set(id, val, cls) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = val;
+  if (cls) { el.className = el.className.replace(/\b(green|red|blue|purple)\b/g,''); el.classList.add(cls); }
+}
+
+// ─────────────────────────────────────
+//  INIT
+// ─────────────────────────────────────
+function init() {
+  const now = new Date();
+  curYear = now.getFullYear();
+  curMonth = now.getMonth();
+  render();
+}
+
+function changeMonth(d) {
+  curMonth += d;
+  if (curMonth > 11) { curMonth = 0; curYear++; }
+  if (curMonth < 0)  { curMonth = 11; curYear--; }
+  render();
+}
+
+function render() {
+  const label = mLabel(curYear, curMonth);
+  document.getElementById('month-title').textContent = label;
+  document.getElementById('kpi-month').textContent = label;
+  document.getElementById('kpi-month-bs').textContent = label;
+  loadPL();
+  loadBS();
+  calcPL();
+  calcBS();
+}
+
+// ─────────────────────────────────────
+//  P&L LOAD / SAVE / CALC
+// ─────────────────────────────────────
+function loadPL() {
+  const key = mKey(curYear, curMonth);
+  const m = db.months[key];
+  const pl = m?.pl || {};
+  PL_FIELDS.forEach(f => {
+    const el = document.getElementById('pl-' + f);
+    if (el) el.value = pl[f] != null ? pl[f] : '';
+  });
+}
+
+function savePL() {
+  const key = mKey(curYear, curMonth);
+  if (!db.months[key]) db.months[key] = {};
+  const pl = {};
+  PL_FIELDS.forEach(f => { pl[f] = v('pl-' + f); });
+  db.months[key].pl = pl;
+  save(db);
+  toast('💾 Estado de Resultados guardado');
+}
+
+function calcPL() {
+  const ventas   = v('pl-ventas');
+  const otrosIng = v('pl-otros-ing');
+  const totalIng = ventas + otrosIng;
+
+  const cogs     = v('pl-cogs');
+  const utilBruta = totalIng - cogs;
+
+  const sueldos   = v('pl-sueldos');
+  const renta     = v('pl-renta');
+  const servicios = v('pl-servicios');
+  const marketing = v('pl-marketing');
+  const depr      = v('pl-depreciacion');
+  const otrosOp   = v('pl-otros-op');
+  const totalOp   = sueldos + renta + servicios + marketing + depr + otrosOp;
+
+  const ebit      = utilBruta - totalOp;
+  const intereses = v('pl-intereses');
+  const isr       = v('pl-isr');
+  const utilNeta  = ebit - intereses - isr;
+
+  const utilNetaColor = utilNeta >= 0 ? 'green' : 'red';
+  const ebitColor = ebit >= 0 ? 'blue' : 'red';
+  const brutaColor = utilBruta >= 0 ? '' : 'red';
+
+  set('pl-total-ing', fmt(totalIng), 'green');
+  set('pl-util-bruta', fmt(utilBruta), brutaColor || 'green');
+  set('pl-total-op', fmt(totalOp), 'red');
+  set('pl-ebit', fmt(ebit), ebitColor);
+  set('pl-util-neta', fmt(utilNeta), utilNetaColor);
+
+  set('k-ing', fmt(totalIng), 'green');
+  set('k-cogs', fmt(cogs), 'red');
+  set('k-bruta', fmt(utilBruta), utilBruta >= 0 ? 'green' : 'red');
+  set('k-op', fmt(totalOp), 'red');
+  set('k-ebit', fmt(ebit), ebitColor);
+  set('k-fin', fmt(intereses + isr), 'red');
+  set('k-neta', fmt(utilNeta));
+
+  set('k-mg-bruto', pct(utilBruta, totalIng));
+  set('k-mg-neto', pct(utilNeta, totalIng));
+
+  // Push utilidad neta to BS util-periodo field if empty
+  const bsUtilEl = document.getElementById('bs-util-periodo');
+  if (bsUtilEl && (bsUtilEl.dataset.userEdited !== 'true')) {
+    bsUtilEl.value = utilNeta !== 0 ? utilNeta.toFixed(2) : '';
+    bsUtilEl.placeholder = utilNeta !== 0 ? '' : 'Auto desde P&L';
+    calcBS();
+  }
+}
+
+// ─────────────────────────────────────
+//  BALANCE GENERAL LOAD / SAVE / CALC
+// ─────────────────────────────────────
+function loadBS() {
+  const key = mKey(curYear, curMonth);
+  const m = db.months[key];
+  const bs = m?.bs || {};
+  BS_FIELDS.forEach(f => {
+    const el = document.getElementById('bs-' + f);
+    if (el) {
+      el.value = bs[f] != null ? bs[f] : '';
+      el.dataset.userEdited = bs[f] != null ? 'true' : 'false';
+    }
+  });
+}
+
+function saveBS() {
+  const key = mKey(curYear, curMonth);
+  if (!db.months[key]) db.months[key] = {};
+  const bs = {};
+  BS_FIELDS.forEach(f => { bs[f] = v('bs-' + f); });
+  db.months[key].bs = bs;
+  // Mark util-periodo as user-edited
+  document.getElementById('bs-util-periodo').dataset.userEdited = 'true';
+  save(db);
+  toast('💾 Balance General guardado');
+}
+
+document.getElementById('bs-util-periodo').addEventListener('input', function() {
+  this.dataset.userEdited = 'true';
+  calcBS();
+});
+
+function calcBS() {
+  // Activos
+  const ac  = v('bs-efectivo') + v('bs-cxc') + v('bs-inventario') + v('bs-otros-ac');
+  const anc = v('bs-ppe') + v('bs-intangibles') + v('bs-otros-anc');
+  const ta  = ac + anc;
+
+  // Pasivos
+  const pc  = v('bs-cxp') + v('bs-prestamo-cp') + v('bs-imp-pagar') + v('bs-otros-pc');
+  const pnc = v('bs-prestamo-lp') + v('bs-otros-pnc');
+  const tp  = pc + pnc;
+
+  // Capital
+  const cap = v('bs-capital') + v('bs-retenidas') + v('bs-util-periodo');
+  const pyc = tp + cap;
+  const diff = ta - pyc;
+
+  set('bs-total-ac', fmt(ac), 'green');
+  set('bs-total-anc', fmt(anc), 'green');
+  set('bs-total-activos', fmt(ta));
+  set('bs-total-pc', fmt(pc), 'red');
+  set('bs-total-pnc', fmt(pnc), 'red');
+  set('bs-total-pasivos', fmt(tp));
+  set('bs-total-capital', fmt(cap), 'blue');
+  set('bs-total-pyc', fmt(pyc));
+
+  // KPIs
+  set('kb-ac', fmt(ac), 'green');
+  set('kb-anc', fmt(anc), 'green');
+  set('kb-ta', fmt(ta), 'green');
+  set('kb-pc', fmt(pc), 'red');
+  set('kb-pnc', fmt(pnc), 'red');
+  set('kb-tp', fmt(tp), 'red');
+  set('kb-cap', fmt(cap), 'blue');
+  set('kb-rc', pc > 0 ? (ac/pc).toFixed(2) + 'x' : '—');
+  set('kb-apal', cap > 0 ? (tp/cap).toFixed(2) + 'x' : '—');
+
+  // Balance equation alert
+  const alertEl = document.getElementById('bs-balance-alert');
+  const ecuEl   = document.getElementById('bs-ecuacion-alert');
+  const balanced = Math.abs(diff) < 0.01;
+
+  if (ta === 0 && tp === 0 && cap === 0) {
+    alertEl.innerHTML = '';
+    ecuEl.innerHTML = `<div style="font-size:12px;font-weight:700;color:#1a1a2e;">Ecuación Contable</div><div style="font-size:11px;color:#9ca3af;margin-top:2px;">Activos = Pasivos + Capital</div>`;
+    return;
+  }
+  if (balanced) {
+    alertEl.innerHTML = `<div class="balance-alert ok">✅ Balance cuadra: Activos = Pasivos + Capital</div>`;
+    ecuEl.innerHTML = `<div style="font-size:12px;font-weight:700;color:#059669;">✅ Balance cuadrado</div><div style="font-size:11px;color:#059669;margin-top:2px;">${fmt(ta)} = ${fmt(tp)} + ${fmt(cap)}</div>`;
+  } else {
+    const diffFmt = fmt(Math.abs(diff));
+    alertEl.innerHTML = `<div class="balance-alert err">⚠️ Descuadre de ${diffFmt}. Activos ≠ Pasivos + Capital</div>`;
+    ecuEl.innerHTML = `<div style="font-size:12px;font-weight:700;color:#dc2626;">⚠️ Descuadre: ${diffFmt}</div><div style="font-size:11px;color:#dc2626;margin-top:2px;">Activos ${fmt(ta)} ≠ ${fmt(tp)} + ${fmt(cap)}</div>`;
+  }
+}
+
+// ─────────────────────────────────────
+//  TABS
+// ─────────────────────────────────────
+function switchTab(t) {
+  ['pl','bs','hist'].forEach(id => {
+    document.getElementById('tab-'+id).classList.toggle('active', id===t);
+  });
+  document.querySelectorAll('.tab').forEach((b,i) => {
+    b.classList.toggle('active', ['pl','bs','hist'][i] === t);
+  });
+  if (t === 'hist') renderHistory();
+}
+
+// ─────────────────────────────────────
+//  SNAPSHOT
+// ─────────────────────────────────────
+function openSnapModal() {
+  const label = mLabel(curYear, curMonth);
+  document.getElementById('snap-modal-txt').textContent =
+    `Se guardará una copia inmutable de los estados financieros de "${label}" en el Historial. Los datos actuales no se perderán y podrás seguir editando este mes.`;
+  document.getElementById('snap-modal').classList.add('show');
+}
+function closeModal() { document.getElementById('snap-modal').classList.remove('show'); }
+
+function confirmSnap() {
+  closeModal();
+
+  // Auto-save current data first
+  savePL();
+  saveBS();
+
+  const key = mKey(curYear, curMonth);
+  const m = db.months[key] || {};
+  const pl = m.pl || {};
+  const bs = m.bs || {};
+
+  // Compute PL totals
+  const totalIng  = (pl['ventas']||0) + (pl['otros-ing']||0);
+  const totalOp   = (pl['sueldos']||0)+(pl['renta']||0)+(pl['servicios']||0)+(pl['marketing']||0)+(pl['depreciacion']||0)+(pl['otros-op']||0);
+  const utilBruta = totalIng - (pl['cogs']||0);
+  const ebit      = utilBruta - totalOp;
+  const utilNeta  = ebit - (pl['intereses']||0) - (pl['isr']||0);
+
+  // Compute BS totals
+  const ac  = (bs['efectivo']||0)+(bs['cxc']||0)+(bs['inventario']||0)+(bs['otros-ac']||0);
+  const anc = (bs['ppe']||0)+(bs['intangibles']||0)+(bs['otros-anc']||0);
+  const ta  = ac + anc;
+  const pc  = (bs['cxp']||0)+(bs['prestamo-cp']||0)+(bs['imp-pagar']||0)+(bs['otros-pc']||0);
+  const pnc = (bs['prestamo-lp']||0)+(bs['otros-pnc']||0);
+  const tp  = pc + pnc;
+  const cap = (bs['capital']||0)+(bs['retenidas']||0)+(bs['util-periodo']||0);
+
+  const snap = {
+    id: Date.now(),
+    monthKey: key,
+    monthLabel: mLabel(curYear, curMonth),
+    snapDate: new Date().toISOString(),
+    pl: JSON.parse(JSON.stringify(pl)),
+    bs: JSON.parse(JSON.stringify(bs)),
+    summary: { totalIng, utilBruta, ebit, utilNeta, ta, tp, cap }
+  };
+
+  db.history.unshift(snap);
+  save(db);
+  toast('📸 Snapshot guardado en el Historial');
+}
+
+// ─────────────────────────────────────
+//  HISTORY RENDER
+// ─────────────────────────────────────
+function renderHistory() {
+  const cont = document.getElementById('history-content');
+  if (!db.history.length) {
+    cont.innerHTML = `<div class="history-empty">No hay snapshots guardados aún.<br>Guarda el snapshot de un mes desde el Estado de Resultados o el Balance General.</div>`;
+    return;
+  }
+
+  cont.innerHTML = db.history.map((snap, si) => {
+    const s = snap.summary;
+    const snapDateFmt = new Date(snap.snapDate).toLocaleDateString('es-MX', { day:'2-digit', month:'short', year:'numeric' }) +
+      ' ' + new Date(snap.snapDate).toLocaleTimeString('es-MX', { hour:'2-digit', minute:'2-digit' });
+    const netaColor = s.utilNeta >= 0 ? 'color:#059669' : 'color:#dc2626';
+    const diff = s.ta - (s.tp + s.cap);
+    const balanced = Math.abs(diff) < 0.01;
+
+    return `
+    <div class="hcard">
+      <div class="hcard-hdr" onclick="toggleHCard(${si})">
+        <div>
+          <div class="hcard-month">📄 ${snap.monthLabel}</div>
+          <div class="hcard-meta">Snapshot guardado el ${snapDateFmt}</div>
+        </div>
+        <div class="hcard-actions" onclick="event.stopPropagation()">
+          <button class="btn-sm grey" onclick="toggleHCard(${si})">Ver detalle</button>
+          <button class="btn-sm danger" onclick="deleteSnap(${si})">Eliminar</button>
+        </div>
+      </div>
+
+      <div class="hcard-kpis">
+        <div class="hcard-kpi">
+          <div class="kl">Ingresos</div>
+          <div class="kv" style="color:#059669">${fmt(s.totalIng)}</div>
+        </div>
+        <div class="hcard-kpi">
+          <div class="kl">Utilidad Bruta</div>
+          <div class="kv" style="${s.utilBruta>=0?'color:#059669':'color:#dc2626'}">${fmt(s.utilBruta)}</div>
+        </div>
+        <div class="hcard-kpi">
+          <div class="kl">Utilidad Neta</div>
+          <div class="kv" style="${netaColor}">${fmt(s.utilNeta)}</div>
+        </div>
+        <div class="hcard-kpi">
+          <div class="kl">Total Activos</div>
+          <div class="kv">${fmt(s.ta)}</div>
+        </div>
+        <div class="hcard-kpi">
+          <div class="kl">Balance</div>
+          <div class="kv" style="${balanced?'color:#059669':'color:#dc2626'}">${balanced ? '✅ Cuadra' : '⚠️ Descuadre'}</div>
+        </div>
+      </div>
+
+      <div class="hcard-body" id="hcard-${si}">
+        <div class="hcard-tabs">
+          <button class="hcard-tab active" onclick="switchHTab(${si},'pl',this)">Estado de Resultados</button>
+          <button class="hcard-tab" onclick="switchHTab(${si},'bs',this)">Balance General</button>
+        </div>
+
+        <!-- P&L TABLE -->
+        <div id="htab-${si}-pl">
+          <table class="snap-table">
+            <tr><td colspan="2" style="padding:8px 14px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;background:#f9fafb;">INGRESOS</td></tr>
+            <tr class="indent"><td>Ventas / Ingresos Operativos</td><td>${fmt(snap.pl['ventas']||0)}</td></tr>
+            <tr class="indent"><td>Otros Ingresos</td><td>${fmt(snap.pl['otros-ing']||0)}</td></tr>
+            <tr class="subtotal"><td>Total Ingresos</td><td style="color:#059669">${fmt(s.totalIng)}</td></tr>
+            <tr><td colspan="2" style="padding:8px 14px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;background:#f9fafb;">COSTO DE VENTAS</td></tr>
+            <tr class="indent"><td>Costo de Mercancía / Producción</td><td>${fmt(snap.pl['cogs']||0)}</td></tr>
+            <tr class="subtotal"><td>Utilidad Bruta</td><td style="${s.utilBruta>=0?'color:#059669':'color:#dc2626'}">${fmt(s.utilBruta)}</td></tr>
+            <tr><td colspan="2" style="padding:8px 14px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;background:#f9fafb;">GASTOS OPERATIVOS</td></tr>
+            <tr class="indent"><td>Sueldos y Salarios</td><td>${fmt(snap.pl['sueldos']||0)}</td></tr>
+            <tr class="indent"><td>Renta / Arrendamiento</td><td>${fmt(snap.pl['renta']||0)}</td></tr>
+            <tr class="indent"><td>Servicios y Suministros</td><td>${fmt(snap.pl['servicios']||0)}</td></tr>
+            <tr class="indent"><td>Marketing y Publicidad</td><td>${fmt(snap.pl['marketing']||0)}</td></tr>
+            <tr class="indent"><td>Depreciación y Amortización</td><td>${fmt(snap.pl['depreciacion']||0)}</td></tr>
+            <tr class="indent"><td>Otros Gastos Operativos</td><td>${fmt(snap.pl['otros-op']||0)}</td></tr>
+            <tr class="subtotal"><td>EBIT (Utilidad Operativa)</td><td style="${s.ebit>=0?'color:#2563eb':'color:#dc2626'}">${fmt(s.ebit)}</td></tr>
+            <tr><td colspan="2" style="padding:8px 14px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;background:#f9fafb;">FINANCIEROS E IMPUESTOS</td></tr>
+            <tr class="indent"><td>Intereses y Gastos Financieros</td><td>${fmt(snap.pl['intereses']||0)}</td></tr>
+            <tr class="indent"><td>ISR</td><td>${fmt(snap.pl['isr']||0)}</td></tr>
+            <tr class="total-row"><td>UTILIDAD NETA</td><td>${fmt(s.utilNeta)}</td></tr>
+          </table>
+        </div>
+
+        <!-- BS TABLE -->
+        <div id="htab-${si}-bs" style="display:none">
+          <table class="snap-table">
+            <tr><td colspan="2" style="padding:8px 14px;font-size:11px;font-weight:700;color:#059669;text-transform:uppercase;background:#f0fdf4;">ACTIVOS</td></tr>
+            <tr class="subtotal"><td>Activos Corrientes</td><td style="color:#059669">${fmt((snap.bs['efectivo']||0)+(snap.bs['cxc']||0)+(snap.bs['inventario']||0)+(snap.bs['otros-ac']||0))}</td></tr>
+            <tr class="indent"><td>Efectivo y Equivalentes</td><td>${fmt(snap.bs['efectivo']||0)}</td></tr>
+            <tr class="indent"><td>Cuentas por Cobrar</td><td>${fmt(snap.bs['cxc']||0)}</td></tr>
+            <tr class="indent"><td>Inventarios</td><td>${fmt(snap.bs['inventario']||0)}</td></tr>
+            <tr class="indent"><td>Otros Activos Corrientes</td><td>${fmt(snap.bs['otros-ac']||0)}</td></tr>
+            <tr class="subtotal"><td>Activos No Corrientes</td><td style="color:#059669">${fmt((snap.bs['ppe']||0)+(snap.bs['intangibles']||0)+(snap.bs['otros-anc']||0))}</td></tr>
+            <tr class="indent"><td>Propiedad, Planta y Equipo</td><td>${fmt(snap.bs['ppe']||0)}</td></tr>
+            <tr class="indent"><td>Activos Intangibles</td><td>${fmt(snap.bs['intangibles']||0)}</td></tr>
+            <tr class="indent"><td>Otros Activos No Corrientes</td><td>${fmt(snap.bs['otros-anc']||0)}</td></tr>
+            <tr class="total-row" style="background:#059669;"><td>TOTAL ACTIVOS</td><td>${fmt(s.ta)}</td></tr>
+            <tr><td colspan="2" style="padding:8px 14px;font-size:11px;font-weight:700;color:#dc2626;text-transform:uppercase;background:#fff5f5;">PASIVOS</td></tr>
+            <tr class="subtotal"><td>Pasivos Corrientes</td><td style="color:#dc2626">${fmt((snap.bs['cxp']||0)+(snap.bs['prestamo-cp']||0)+(snap.bs['imp-pagar']||0)+(snap.bs['otros-pc']||0))}</td></tr>
+            <tr class="indent"><td>Cuentas por Pagar</td><td>${fmt(snap.bs['cxp']||0)}</td></tr>
+            <tr class="indent"><td>Préstamos a Corto Plazo</td><td>${fmt(snap.bs['prestamo-cp']||0)}</td></tr>
+            <tr class="indent"><td>Impuestos por Pagar</td><td>${fmt(snap.bs['imp-pagar']||0)}</td></tr>
+            <tr class="subtotal"><td>Pasivos No Corrientes</td><td style="color:#dc2626">${fmt((snap.bs['prestamo-lp']||0)+(snap.bs['otros-pnc']||0))}</td></tr>
+            <tr class="indent"><td>Préstamos a Largo Plazo</td><td>${fmt(snap.bs['prestamo-lp']||0)}</td></tr>
+            <tr class="total-row" style="background:#7c3aed;"><td>TOTAL PASIVOS</td><td>${fmt(s.tp)}</td></tr>
+            <tr><td colspan="2" style="padding:8px 14px;font-size:11px;font-weight:700;color:#2563eb;text-transform:uppercase;background:#eff6ff;">CAPITAL CONTABLE</td></tr>
+            <tr class="indent"><td>Capital Social</td><td>${fmt(snap.bs['capital']||0)}</td></tr>
+            <tr class="indent"><td>Utilidades Retenidas</td><td>${fmt(snap.bs['retenidas']||0)}</td></tr>
+            <tr class="indent"><td>Utilidad del Período</td><td>${fmt(snap.bs['util-periodo']||0)}</td></tr>
+            <tr class="total-row" style="background:#059669;"><td>TOTAL PASIVOS + CAPITAL</td><td>${fmt(s.tp + s.cap)}</td></tr>
+            <tr><td colspan="2" style="padding:8px 14px;font-size:12px;font-weight:700;${balanced?'color:#059669':'color:#dc2626'};background:#f9fafb;">${balanced ? '✅ Balance cuadra' : `⚠️ Descuadre de ${fmt(Math.abs(diff))}`}</td></tr>
+          </table>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleHCard(si) {
+  const el = document.getElementById(`hcard-${si}`);
+  el.classList.toggle('open');
+}
+
+function switchHTab(si, tab, btn) {
+  ['pl','bs'].forEach(t => {
+    const el = document.getElementById(`htab-${si}-${t}`);
+    if (el) el.style.display = t === tab ? 'block' : 'none';
+  });
+  btn.closest('.hcard-tabs').querySelectorAll('.hcard-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+function deleteSnap(si) {
+  if (!confirm('¿Eliminar este snapshot del historial? Esta acción es permanente.')) return;
+  db.history.splice(si, 1);
+  save(db);
+  renderHistory();
+  toast('🗑️ Snapshot eliminado');
+}
+
+// ─────────────────────────────────────
+//  TOAST
+// ─────────────────────────────────────
+let toastTmr;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTmr);
+  toastTmr = setTimeout(() => el.classList.remove('show'), 2800);
+}
+
+init();
+</script>
+</body>
+</html>
